@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: test  # 确保检出 test 分支
       
       - run: rm -rf /opt/hostedtoolcache
       
