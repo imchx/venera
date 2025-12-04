@@ -1,0 +1,86 @@
+name: Build a temporary APK from the test branch
+
+on:
+  workflow_dispatch:
+
+jobs:
+  Build_Android_Arm64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      
+      - run: rm -rf /opt/hostedtoolcache
+      
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version-file: pubspec.yaml
+          architecture: x64
+          
+      # 创建临时的 release 签名配置
+      - name: Create temporary release signing config
+        run: |
+          mkdir -p android/app
+          
+          # 创建临时 keystore（仅供测试，正式项目请使用正式 keystore）
+          keytool -genkey -v \
+            -keystore android/app/release.keystore \
+            -storepass releasepassword \
+            -alias releasekey \
+            -keypass releasepassword \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Release, OU=Development, O=Company, L=City, ST=State, C=US"
+          
+          # 创建 key.properties 文件
+          cat > android/key.properties << 'EOF'
+          storePassword=releasepassword
+          keyPassword=releasepassword
+          keyAlias=releasekey
+          storeFile=release.keystore
+          EOF
+          
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+          
+      # 设置只构建 arm64 架构
+      - name: Configure for arm64 only
+        run: |
+          # 修改 build.gradle 只构建 arm64
+          if [ -f android/app/build.gradle ]; then
+            # 在 android 块内添加 packagingOptions 和 splits（如果不存在）
+            if ! grep -q "packagingOptions" android/app/build.gradle; then
+              # 找到 android { 后在下一行添加 packagingOptions
+              sed -i '/android\s*{/a\    packagingOptions {\n        pickFirst "lib/arm64-v8a/*.so"\n        pickFirst "lib/armeabi-v7a/*.so"\n        pickFirst "lib/x86/*.so"\n        pickFirst "lib/x86_64/*.so"\n    }' android/app/build.gradle
+            fi
+            
+            # 添加 splits 配置（如果不存在）
+            if ! grep -q "splits\s*{" android/app/build.gradle; then
+              # 在 android { 块内添加 splits
+              sed -i '/android\s*{/a\    splits {\n        abi {\n            enable true\n            reset()\n            include "arm64-v8a"\n            universalApk false\n        }\n    }' android/app/build.gradle
+            fi
+            
+            echo "Modified build.gradle for arm64 only"
+          fi
+          
+      - name: Check rust-toolchain.toml
+        run: rustup show
+        
+      # 设置 Rust 只编译 arm64 目标（加速构建）
+      - name: Set Rust target to arm64
+        run: |
+          echo "CARGO_BUILD_TARGET=aarch64-linux-android" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          
+      - run: flutter pub get
+      
+      # 构建 arm64 版本的 release APK
+      - run: flutter build apk --release --split-per-abi --target-platform=android-arm64
+        
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-apk-arm64
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
