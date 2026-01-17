@@ -126,12 +126,14 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    final isOnChapterCommentsPage = context.reader.isOnChapterCommentsPage;
     return Stack(
       children: [
         Positioned.fill(child: widget.child),
-        if (appdata.settings['showPageNumberInReader'] == true)
+        if (appdata.settings['showPageNumberInReader'] == true && !isOnChapterCommentsPage)
           buildPageInfoText(),
-        buildStatusInfo(),
+        if (!isOnChapterCommentsPage)
+          buildStatusInfo(),
         AnimatedPositioned(
           duration: const Duration(milliseconds: 180),
           right: 16,
@@ -160,6 +162,11 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   }
 
   Widget buildTop() {
+    final epName =
+      context.reader.widget.chapters?.titles.elementAtOrNull(
+        context.reader.chapter - 1,
+      );
+
     return BlurEffect(
       child: Container(
         padding: EdgeInsets.only(top: context.padding.top),
@@ -183,11 +190,28 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
               const BackButton(),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
+                child: epName == null ? Text(
                   context.reader.widget.name,
                   style: ts.s18,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                ) : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      context.reader.widget.name,
+                      style: ts.s16,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      epName,
+                      style: ts.s12,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
@@ -360,9 +384,11 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   }
 
   Widget buildBottom() {
-    var text = "E${context.reader.chapter} : P${context.reader.page}";
+    // Use maxPage for display (excluding chapter comments page)
+    final displayPage = context.reader.page.clamp(1, context.reader.maxPage);
+    var text = "E${context.reader.chapter} : P$displayPage";
     if (context.reader.widget.chapters == null) {
-      text = "P${context.reader.page}";
+      text = "P$displayPage";
     }
 
     final buttons = [
@@ -492,9 +518,10 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           ),
           LayoutBuilder(
             builder: (context, constrains) {
+              final small = (constrains.maxWidth - buttons.length * 50) < 120;
               return Row(
                 children: [
-                  if ((constrains.maxWidth - buttons.length * 42) > 80)
+                  if (!small)
                     Container(
                       height: 24,
                       padding: const EdgeInsets.fromLTRB(6, 2, 6, 0),
@@ -505,8 +532,13 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
                       child: Center(child: Text(text)),
                     ).paddingLeft(16),
                   const Spacer(),
-                  ...buttons,
-                  const SizedBox(width: 4),
+                  for (var button in buttons)
+                    if (!small)
+                      button.paddingHorizontal(4)
+                    else
+                      ...[button, const Spacer()],
+                  if (!small)
+                    const SizedBox(width: 4),
                 ],
               );
             },
@@ -543,12 +575,14 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   var sliderFocus = FocusNode();
 
   Widget buildSlider() {
+    // Clamp page to maxPage (excluding chapter comments page)
+    final displayPage = context.reader.page.clamp(1, context.reader.maxPage);
     return CustomSlider(
       focusNode: sliderFocus,
-      value: context.reader.page.toDouble(),
+      value: displayPage.toDouble(),
       min: 1,
       max: context.reader.maxPage
-          .clamp(context.reader.page, 1 << 16)
+          .clamp(displayPage, 1 << 16)
           .toDouble(),
       reversed: isReversed,
       divisions: (context.reader.maxPage - 1).clamp(2, 1 << 16),
@@ -628,8 +662,10 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     }
     var (imageIndex, data) = result;
     var fileType = detectFileType(data);
+    // Save file name: ComicName_EP{chapter}_P{page}.{ext} to avoid conflict.
+    // The chapter index of different group is continuous, so we use chapter number is enough.
     var filename =
-        "${context.reader.widget.name}_${imageIndex + 1}${fileType.ext}";
+        "${context.reader.widget.name}_EP${context.reader.chapter}_P${imageIndex + 1}${fileType.ext}";
     saveFile(data: data, filename: filename);
   }
 
@@ -641,7 +677,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     var (imageIndex, data) = result;
     var fileType = detectFileType(data);
     var filename =
-        "${context.reader.widget.name}_${imageIndex + 1}${fileType.ext}";
+        "${context.reader.widget.name}_EP${context.reader.chapter}_P${imageIndex + 1}${fileType.ext}";
     Share.shareFile(data: data, filename: filename, mime: fileType.mime);
   }
 
@@ -675,7 +711,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           if (key == "quickCollectImage") {
             addDragListener();
           }
-          if (key == "showChapterComments") {
+          if (key == "showChapterComments" || key == "showChapterCommentsAtEnd") {
             update();
           }
           context.reader.update();
@@ -769,9 +805,10 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
               borderRadius: BorderRadius.circular(16),
               child: Center(
                 child: Icon(
-                  showFloatingButtonValue == 1
-                      ? Icons.arrow_forward_ios
-                      : Icons.arrow_back_ios_outlined,
+                  _getArrowIcon(
+                    isReversed,
+                    showFloatingButtonValue,
+                  ),
                   size: 24,
                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                 ),
@@ -781,6 +818,14 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
         );
     }
     return const SizedBox();
+  }
+
+  IconData _getArrowIcon(bool reversed, int value) {
+    if (reversed) {
+      return value == 1 ? Icons.arrow_back_ios_outlined : Icons.arrow_forward_ios;
+    } else {
+      return value == 1 ? Icons.arrow_forward_ios : Icons.arrow_back_ios_outlined;
+    }
   }
 
   /// If there is only one image on screen, return it.
