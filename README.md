@@ -1,5 +1,8 @@
+# Due to my limited time and energy, this project is no longer maintained. Feel free to fork it.
+# 由于本人精力有限, 此项目已停止维护, 欢迎fork
+
 # venera
-[![flutter](https://img.shields.io/badge/flutter-3.38.5-blue)](https://flutter.dev/)
+[![flutter](https://img.shields.io/badge/flutter-3.41.4-blue)](https://flutter.dev/)
 [![License](https://img.shields.io/github/license/venera-app/venera)](https://github.com/venera-app/venera/blob/master/LICENSE)
 [![stars](https://img.shields.io/github/stars/venera-app/venera?style=flat)](https://github.com/venera-app/venera/stargazers)
 
@@ -30,9 +33,10 @@ See [Comic Source](doc/comic_source.md)
 ## Thanks
 
 ### Tags Translation
-[![Readme Card](https://github-readme-stats.vercel.app/api/pin/?username=EhTagTranslation&repo=Database)](https://github.com/EhTagTranslation/Database)
+[EhTagTranslation](https://github.com/EhTagTranslation/Database)
+
+The Chinese translation of the manga tags is from this project.
 
 ## Headless Mode
 See [Headless Doc](doc/headless_doc.md)
 
-The Chinese translation of the manga tags is from this project.
